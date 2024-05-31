@@ -124,7 +124,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
 }
 
 public extension ApiContent {
-    struct Data: Codable {
+    struct Data: Codable, Equatable {
         public var id: UUID = UUID()
         public var name: String = String()
         public var endpoint: String = String()
