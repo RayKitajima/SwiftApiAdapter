@@ -138,6 +138,40 @@ public extension ApiContent {
         public func isValid() -> Bool {
             return !name.isEmpty && !endpoint.isEmpty
         }
+
+        public init() {
+            self.id = UUID()
+            self.name = ""
+            self.endpoint = ""
+            self.method = .get
+            self.headers = [:]
+            self.body = ""
+            self.arguments = [:]
+            self.contentType = .text
+            self.description = nil
+        }
+
+        public init(
+            id: UUID = UUID(),
+            name: String = "",
+            endpoint: String = "",
+            method: HttpMethod = .get,
+            headers: [String: String] = [String: String](),
+            body: String = "",
+            arguments: [String: String] = [String: String](),
+            contentType: ContentType = .text,
+            description: String? = nil
+        ) {
+            self.id = id
+            self.name = name
+            self.endpoint = endpoint
+            self.method = method
+            self.headers = headers
+            self.body = body
+            self.arguments = arguments
+            self.contentType = contentType
+            self.description = description
+        }
     }
 
     var data: Data {
