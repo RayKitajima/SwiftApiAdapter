@@ -2,6 +2,8 @@
 
 SwiftApiAdapter is a Swift package designed to streamline the process of retrieving remote content, such as text and images, in Swift applications. It provides a robust framework for managing API connectors, handling requests asynchronously, and processing responses, focusing on efficiency and effectiveness. This package is especially well-suited for calling generative AI APIs.
 
+See also: [StarlightApiHelper](https://github.com/RayKitajima/StarlightApiHelper)
+
 ## Features
 
 - **Singleton Connector Manager**: Simplify the management of API connectors with a singleton manager.
