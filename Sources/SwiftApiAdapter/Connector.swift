@@ -38,7 +38,7 @@ public class ApiConnectorManager: ObservableObject {
     }
 }
 
-public class ApiConnector {
+public class ApiConnector: Equatable {
     let executor: ApiSerialExecutor
     let requester: ApiRequester
 
@@ -56,6 +56,10 @@ public class ApiConnector {
 
     func stop() {
         executor.stop()
+    }
+
+    public static func == (lhs: ApiConnector, rhs: ApiConnector) -> Bool {
+        return lhs.executor === rhs.executor && lhs.requester === rhs.requester
     }
 }
 
