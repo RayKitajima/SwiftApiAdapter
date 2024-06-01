@@ -1,7 +1,6 @@
 # SwiftApiAdapter
 
-SwiftApiAdapter is a Swift package designed to streamline API communications in Swift applications. 
-It provides a robust framework for managing API connectors, handling requests asynchronously, and processing responses, focusing on efficiency and effectiveness.
+SwiftApiAdapter is a Swift package designed to streamline the process of retrieving remote content, such as text and images, in Swift applications. It provides a robust framework for managing API connectors, handling requests asynchronously, and processing responses, focusing on efficiency and effectiveness. This package is especially well-suited for calling generative AI APIs.
 
 ## Features
 
@@ -50,7 +49,6 @@ let apiConnector = ApiConnectorManager.shared.getConnector(for: "ExampleAPI")
 2. **Send an API request** with custom headers including `User-Agent`:
 
 ```swift
-let requestData = Data() // Your JSON data
 let endpoint = URL(string: "https://example.com/api")!
 let headers = [
     "User-Agent": "Your Custom User-Agent",
@@ -58,16 +56,15 @@ let headers = [
 ]
 let response = await apiConnector.requester.processJsonApi(
     endpoint: endpoint,
-    method: "POST",
+    method: "GET",
     headers: headers,
-    body: requestData
+    body: "" // Empty body for GET request
 )
 ```
 
 #### Using ApiContentLoader to Load API Content
 
-This example demonstrates how to use `ApiContentLoader` to load specific data from an API response into your application. 
-The example fetches a value keyed by `"result"` within the nested `"data"` JSON object.
+This example demonstrates how to use `ApiContentLoader` to load specific data from an API response into your application. The example fetches a value keyed by `"result"` within the nested `"data"` JSON object.
 
 1. **Define ApiContent**:
 
@@ -162,8 +159,7 @@ struct ApiView: View {
 
 #### Using ApiContentLoader to Load API Content in SwiftUI
 
-SwiftUI can dynamically update views based on data fetched from APIs. 
-Below, we demonstrate how to use `ApiContentLoader` within a SwiftUI view to load and display both base64 encoded images and text content.
+SwiftUI can dynamically update views based on data fetched from APIs. Below, we demonstrate how to use `ApiContentLoader` within a SwiftUI view to load and display both base64 encoded images and text content.
 
 ##### Example 1: Displaying a Base64 Encoded Image
 
@@ -201,7 +197,9 @@ struct ImageView: View {
             }
         }
         .onAppear {
-            apiController.loadImageContent()
+            Task {
+                await apiController.loadImageContent()
+            }
         }
     }
 }
@@ -262,7 +260,9 @@ struct TextView: View {
     var body: some View {
         Text(apiController.textData ?? "Loading Text...")
             .onAppear {
-                apiController.loadTextContent()
+                Task {
+                    await apiController.loadTextContent()
+                }
             }
     }
 }
@@ -294,8 +294,7 @@ class ApiController: ObservableObject {
 }
 ```
 
-These examples illustrate how to fetch and display API content reactively in a SwiftUI application. 
-They show a pattern of initiating API requests on view appearance and updating the view state based on the results, thus integrating network operations seamlessly within the SwiftUI lifecycle.
+These examples illustrate how to fetch and display API content reactively in a SwiftUI application. They show a pattern of initiating API requests on view appearance and updating the view state based on the results, thus integrating network operations seamlessly within the SwiftUI lifecycle.
 
 ### Managing API Connectors
 
