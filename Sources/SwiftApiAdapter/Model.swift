@@ -16,19 +16,92 @@ public enum ContentType: String, Codable, CaseIterable {
     case urlImage = "URL_IMAGE"
 }
 
+public struct CodableExtraData: Codable, Equatable {
+    var data: [String: Any]
+
+    init(data: [String: Any]) {
+        self.data = data
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case data
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        var dataContainer = container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: .data)
+        for (key, value) in data {
+            let codingKey = DynamicCodingKeys(stringValue: key)!
+            if let intValue = value as? Int {
+                try dataContainer.encode(intValue, forKey: codingKey)
+            } else if let doubleValue = value as? Double {
+                try dataContainer.encode(doubleValue, forKey: codingKey)
+            } else if let stringValue = value as? String {
+                try dataContainer.encode(stringValue, forKey: codingKey)
+            } else if let boolValue = value as? Bool {
+                try dataContainer.encode(boolValue, forKey: codingKey)
+            } else if value is NSNull {
+                try dataContainer.encodeNil(forKey: codingKey)
+            } else {
+                throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: [codingKey], debugDescription: "Invalid value"))
+            }
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let dataContainer = try container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: .data)
+        var data: [String: Any] = [:]
+        for key in dataContainer.allKeys {
+            if let intValue = try? dataContainer.decode(Int.self, forKey: key) {
+                data[key.stringValue] = intValue
+            } else if let doubleValue = try? dataContainer.decode(Double.self, forKey: key) {
+                data[key.stringValue] = doubleValue
+            } else if let stringValue = try? dataContainer.decode(String.self, forKey: key) {
+                data[key.stringValue] = stringValue
+            } else if let boolValue = try? dataContainer.decode(Bool.self, forKey: key) {
+                data[key.stringValue] = boolValue
+            } else if try dataContainer.decodeNil(forKey: key) {
+                print("decodeNil: \(key)")
+                data[key.stringValue] = NSNull()
+            } else {
+                throw DecodingError.dataCorruptedError(forKey: key, in: dataContainer, debugDescription: "Invalid value")
+            }
+        }
+        self.data = data
+    }
+
+    public static func == (lhs: CodableExtraData, rhs: CodableExtraData) -> Bool {
+        return NSDictionary(dictionary: lhs.data).isEqual(to: rhs.data)
+    }
+
+    struct DynamicCodingKeys: CodingKey {
+        var stringValue: String
+        var intValue: Int?
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue: Int) {
+            self.intValue = intValue
+            self.stringValue = "\(intValue)"
+        }
+    }
+}
+
+
 public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
     public var id: UUID = UUID()
     public var name: String = String()
-
     public var endpoint: String = String()
     public var method: HttpMethod = .get
     public var headers: [String: String] = [String: String]()
     public var body: String = String()
     public var arguments: [String: String] = [String: String]()
-
     public var contentType: ContentType = .text
-
     public var description: String?
+    public var extraData: CodableExtraData?
 
     public init(
         id: UUID = UUID(),
@@ -39,7 +112,8 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         body: String = "",
         arguments: [String: String] = [String: String](),
         contentType: ContentType = .text,
-        description: String? = nil
+        description: String? = nil,
+        extraData: [String: Any]? = nil
     ) {
         self.id = id
         self.name = name
@@ -50,6 +124,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         self.arguments = arguments
         self.contentType = contentType
         self.description = description
+        self.extraData = extraData != nil ? CodableExtraData(data: extraData!) : nil
     }
 
     init() {
@@ -62,6 +137,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         self.arguments = [String: String]()
         self.contentType = .text
         self.description = nil
+        self.extraData = nil
     }
 
     func isValid() -> Bool {
@@ -81,7 +157,9 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
             lhs.body == rhs.body &&
             lhs.arguments == rhs.arguments &&
             lhs.contentType == rhs.contentType &&
-            lhs.description == rhs.description
+            lhs.description == rhs.description &&
+            lhs.description == rhs.description &&
+            lhs.extraData == rhs.extraData
     }
 
     enum CodingKeys: String, CodingKey {
@@ -94,6 +172,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         case arguments
         case contentType
         case description
+        case extraData
     }
 
     public init(from decoder: Decoder) throws {
@@ -107,6 +186,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         self.arguments = try container.decode([String: String].self, forKey: .arguments)
         self.contentType = try container.decode(ContentType.self, forKey: .contentType)
         self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.extraData = try container.decodeIfPresent(CodableExtraData.self, forKey: .extraData)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -120,6 +200,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         try container.encode(self.arguments, forKey: .arguments)
         try container.encode(self.contentType, forKey: .contentType)
         try container.encodeIfPresent(self.description, forKey: .description)
+        try container.encodeIfPresent(self.extraData, forKey: .extraData)
     }
 }
 
@@ -134,6 +215,7 @@ public extension ApiContent {
         public var arguments: [String: String] = [String: String]()
         public var contentType: ContentType = .text
         public var description: String?
+        public var extraData: CodableExtraData?
 
         public func isValid() -> Bool {
             return !name.isEmpty && !endpoint.isEmpty
@@ -149,6 +231,7 @@ public extension ApiContent {
             self.arguments = [:]
             self.contentType = .text
             self.description = nil
+            self.extraData = nil
         }
 
         public init(
@@ -160,7 +243,8 @@ public extension ApiContent {
             body: String = "",
             arguments: [String: String] = [String: String](),
             contentType: ContentType = .text,
-            description: String? = nil
+            description: String? = nil,
+            extraData: [String: Any]? = nil
         ) {
             self.id = id
             self.name = name
@@ -171,6 +255,7 @@ public extension ApiContent {
             self.arguments = arguments
             self.contentType = contentType
             self.description = description
+            self.extraData = extraData != nil ? CodableExtraData(data: extraData!) : nil
         }
     }
 
@@ -184,7 +269,8 @@ public extension ApiContent {
             body: self.body,
             arguments: self.arguments,
             contentType: self.contentType,
-            description: self.description
+            description: self.description,
+            extraData: self.extraData?.data
         )
     }
 
@@ -198,6 +284,7 @@ public extension ApiContent {
         self.arguments = data.arguments
         self.contentType = data.contentType
         self.description = data.description
+        self.extraData = data.extraData
     }
 
     init(from data: Data) {
@@ -210,5 +297,6 @@ public extension ApiContent {
         self.arguments = data.arguments
         self.contentType = data.contentType
         self.description = data.description
+        self.extraData = data.extraData
     }
 }

@@ -2,8 +2,6 @@
 
 SwiftApiAdapter is a Swift package designed to streamline the process of retrieving remote content, such as text and images, in Swift applications. It provides a robust framework for managing API connectors, handling requests asynchronously, and processing responses, focusing on efficiency and effectiveness. This package is especially well-suited for calling generative AI APIs.
 
-See also: [StarlightApiHelper](https://github.com/RayKitajima/StarlightApiHelper)
-
 ## Features
 
 - **Singleton Connector Manager**: Simplify the management of API connectors with a singleton manager.
@@ -13,6 +11,7 @@ See also: [StarlightApiHelper](https://github.com/RayKitajima/StarlightApiHelper
 - **Concurrency and Thread Safety**: Designed to be thread-safe and support concurrent operations.
 - **Flexible Header Management**: Customize request headers, including `User-Agent`, on a per-request basis.
 - **SwiftUI Integration**: Utilize SwiftUI to reactively update UI components based on API activity.
+- **Extra Data Management**: Store additional necessary information about the API using the `extraData` field.
 
 ## Installation
 
@@ -70,7 +69,7 @@ This example demonstrates how to use `ApiContentLoader` to load specific data fr
 
 1. **Define ApiContent**:
 
-   Configure your API content by specifying the endpoint, HTTP method, headers, and any arguments necessary to extract specific data from the API response.
+   Configure your API content by specifying the endpoint, HTTP method, headers, and any arguments necessary to extract specific data from the API response. You can also add any extra data needed for managing the API using the `extraData` field.
 
 ```swift
 let apiContent = ApiContent(
@@ -80,7 +79,8 @@ let apiContent = ApiContent(
     method: .get,
     headers: ["Authorization": "Bearer your_access_token"],
     body: "",  // No body needed for GET request
-    arguments: ["result": "data.result"]  // Path to extract `result` from the JSON response
+    arguments: ["result": "data.result"],  // Path to extract `result` from the JSON response
+    extraData: ["info": "additional info"]  // Additional data
 )
 ```
 
@@ -97,6 +97,9 @@ do {
     if let apiContentRack = apiContentRack {
         let resultValue = apiContentRack.arguments["result"] ?? "No result found"
         print("API Data Loaded: \(resultValue)")
+        if let extraInfo = apiContent.extraData["info"] as? String {
+            print("Extra Info: \(extraInfo)")
+        }
     } else {
         print("Failed to load API data.")
     }
@@ -176,7 +179,8 @@ let apiContentImage = ApiContent(
     headers: ["Authorization": "Bearer your_access_token"],
     body: "",
     arguments: ["image": "[\"data\"][0][\"message\"][\"content\"]"],
-    contentType: .base64image
+    contentType: .base64image,
+    extraData: ["info": "additional image info"]
 )
 ```
 
@@ -247,7 +251,8 @@ let apiContentText = ApiContent(
     headers: ["Authorization": "Bearer your_access_token"],
     body: "",
     arguments: ["text": "[\"choices\"][0][\"message\"][\"content\"]"],
-    contentType: .text
+    contentType: .text,
+    extraData: ["info": "additional text info"]
 )
 ```
 
