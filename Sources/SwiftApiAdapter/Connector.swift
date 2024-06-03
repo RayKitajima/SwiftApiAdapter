@@ -355,11 +355,11 @@ public class ApiRequester {
         return Message(key: key, value: value)
     }
 
-    func initTransaction() {
+    public func initTransaction() {
         self.executor.initTransaction()
     }
 
-    func processJsonApi(endpoint: URL, method: String, headers: [String: String], body: String, immediate: Bool = false) async -> String? {
+    public func processJsonApi(endpoint: URL, method: String, headers: [String: String], body: String, immediate: Bool = false) async -> String? {
         let requestData: Data = Data(body.utf8)
         if immediate {
             #if DEBUG
