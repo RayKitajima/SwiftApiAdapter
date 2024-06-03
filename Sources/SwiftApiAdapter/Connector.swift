@@ -138,8 +138,8 @@ public class ApiSerialExecutor {
     var enabled: Bool = false
     let queue = ApiExecutionQueue()
 
-    @Published var cumulativeRequested: Int = 0
-    @Published var cumulativeExecuted: Int = 0
+    @Published public var cumulativeRequested: Int = 0
+    @Published public var cumulativeExecuted: Int = 0
 
     private let executionContext = DispatchQueue(label: "SwiftApiAdapter.ApiSerialExecutor.executionContext", qos: .userInitiated)
 
