@@ -54,7 +54,7 @@ public class ApiConnector: Equatable {
         }
     }
 
-    func stop() {
+    public func stop() {
         executor.stop()
     }
 
