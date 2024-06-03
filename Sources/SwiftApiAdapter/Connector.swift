@@ -47,7 +47,7 @@ public class ApiConnector: Equatable {
         requester = ApiRequester(executor: executor)
     }
 
-    func initTransaction() {
+    public func initTransaction() {
         DispatchQueue.main.async {
             self.executor.cumulativeRequested = 0
             self.executor.cumulativeExecuted = 0
