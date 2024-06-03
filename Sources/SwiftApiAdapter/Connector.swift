@@ -39,8 +39,8 @@ public class ApiConnectorManager: ObservableObject {
 }
 
 public class ApiConnector: Equatable {
-    let executor: ApiSerialExecutor
-    let requester: ApiRequester
+    public let executor: ApiSerialExecutor
+    public let requester: ApiRequester
 
     init() {
         executor = ApiSerialExecutor()
