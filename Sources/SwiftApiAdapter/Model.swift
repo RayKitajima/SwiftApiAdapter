@@ -19,7 +19,7 @@ public enum ContentType: String, Codable, CaseIterable {
 public struct CodableExtraData: Codable, Equatable {
     public var data: [String: Any]
 
-    init(data: [String: Any]) {
+    public init(data: [String: Any]) {
         self.data = data
     }
 
