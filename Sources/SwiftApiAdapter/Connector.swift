@@ -39,22 +39,22 @@ public class ApiConnectorManager: ObservableObject {
 }
 
 public class ApiConnector: Equatable {
-    let executor: ApiSerialExecutor
-    let requester: ApiRequester
+    public let executor: ApiSerialExecutor
+    public let requester: ApiRequester
 
     init() {
         executor = ApiSerialExecutor()
         requester = ApiRequester(executor: executor)
     }
 
-    func initTransaction() {
+    public func initTransaction() {
         DispatchQueue.main.async {
             self.executor.cumulativeRequested = 0
             self.executor.cumulativeExecuted = 0
         }
     }
 
-    func stop() {
+    public func stop() {
         executor.stop()
     }
 
@@ -138,8 +138,8 @@ public class ApiSerialExecutor {
     var enabled: Bool = false
     let queue = ApiExecutionQueue()
 
-    @Published var cumulativeRequested: Int = 0
-    @Published var cumulativeExecuted: Int = 0
+    @Published public var cumulativeRequested: Int = 0
+    @Published public var cumulativeExecuted: Int = 0
 
     private let executionContext = DispatchQueue(label: "SwiftApiAdapter.ApiSerialExecutor.executionContext", qos: .userInitiated)
 
@@ -166,14 +166,14 @@ public class ApiSerialExecutor {
         }
     }
 
-    func initTransaction() {
+    public func initTransaction() {
         DispatchQueue.main.async {
             self.cumulativeRequested = 0
             self.cumulativeExecuted = 0
         }
     }
 
-    func start() {
+    public func start() {
         #if DEBUG
         print("[ApiSerialExecutor] starting exec loop")
         #endif
@@ -181,14 +181,14 @@ public class ApiSerialExecutor {
         self.executeNextRequest()
     }
 
-    func stop() {
+    public func stop() {
         #if DEBUG
         print("[ApiSerialExecutor] stopping exec loop")
         #endif
         self.enabled = false
     }
 
-    func request(_ requestData: Data) async -> String? {
+    public func request(_ requestData: Data) async -> String? {
         DispatchQueue.main.async {
             self.cumulativeRequested = self.cumulativeRequested + 1
         }
@@ -205,7 +205,7 @@ public class ApiSerialExecutor {
 
     // MARK: - JSON API
 
-    func requestJsonApi(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> String? {
+    public func requestJsonApi(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> String? {
         DispatchQueue.main.async {
             self.cumulativeRequested = self.cumulativeRequested + 1
         }
@@ -355,11 +355,11 @@ public class ApiRequester {
         return Message(key: key, value: value)
     }
 
-    func initTransaction() {
+    public func initTransaction() {
         self.executor.initTransaction()
     }
 
-    func processJsonApi(endpoint: URL, method: String, headers: [String: String], body: String, immediate: Bool = false) async -> String? {
+    public func processJsonApi(endpoint: URL, method: String, headers: [String: String], body: String, immediate: Bool = false) async -> String? {
         let requestData: Data = Data(body.utf8)
         if immediate {
             #if DEBUG
