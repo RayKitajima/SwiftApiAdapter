@@ -32,21 +32,37 @@ public class ApiContentLoader {
             return nil
         }
 
-        let responseJson = try JSON(data: responseData)
+        if apiContent.contentType == .page {
+            let result = extractPage(str: responseString)
+            let plainText = result.plain_text
+            let resourceUrl = result.finalUrl ?? endoint
+            let ogimage = OpenGraphImageScraper.scrape(resourceUrl)
 
-        var arguments: [String: String] = [:] // extracted argument
-        for argument in apiContent.arguments {
-            let name = argument.key
-            let path = argument.value
-            let extractedString = ApiContentLoader.extractValue(from: responseJson, withPath: path)
-            if let extractedString = extractedString {
-                arguments[name] = extractedString
+            var arguments: [String: String] = [:] // extracted argument
+            arguments["content"] = plainText
+            arguments["url"] = resourceUrl
+            arguments["ogimage"] = ogimage ?? ""
+
+            let apiContentRack = ApiContentRack(id: apiContent.id, arguments: arguments)
+
+            return apiContentRack
+        } else {
+            let responseJson = try JSON(data: responseData)
+
+            var arguments: [String: String] = [:] // extracted argument
+            for argument in apiContent.arguments {
+                let name = argument.key
+                let path = argument.value
+                let extractedString = ApiContentLoader.extractValue(from: responseJson, withPath: path)
+                if let extractedString = extractedString {
+                    arguments[name] = extractedString
+                }
             }
+
+            let apiContentRack = ApiContentRack(id: apiContent.id, arguments: arguments)
+
+            return apiContentRack
         }
-
-        let apiContentRack = ApiContentRack(id: apiContent.id, arguments: arguments)
-
-        return apiContentRack
     }
 
     static func extractValue(from json: JSON, withPath path: String) -> String? {
@@ -75,5 +91,20 @@ public class ApiContentLoader {
         }
 
         return nil
+    }
+
+    static func extractPage(str: String) -> (plain_text: String, finalUrl: String?) {
+        let lines = str.split(separator: "\n")
+
+        // Assuming the last line contains the finalUrl information
+        let finalUrlLine = lines.last ?? ""
+
+        let finalUrlPrefix = "finalUrl:"
+        if finalUrlLine.hasPrefix(finalUrlPrefix) {
+            let finalUrl = String(finalUrlLine.dropFirst(finalUrlPrefix.count))
+            let plain_text = lines.dropLast().joined(separator: "\n")
+            return (plain_text, finalUrl == "nil" ? nil : finalUrl)
+        }
+        return (str, nil)  // Return the original data and nil if finalUrl isn't found
     }
 }
