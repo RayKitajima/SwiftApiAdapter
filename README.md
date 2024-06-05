@@ -1,6 +1,6 @@
 # SwiftApiAdapter
 
-SwiftApiAdapter is a Swift package designed to streamline the process of retrieving remote content, such as text and images, in Swift applications. It provides a robust framework for managing API connectors, handling requests asynchronously, and processing responses, focusing on efficiency and effectiveness. This package is especially well-suited for calling generative AI APIs.
+SwiftApiAdapter is a Swift package designed to streamline the process of retrieving remote content, such as text and images, in Swift applications. It provides a robust framework for managing API connectors, handling requests asynchronously, and processing responses, focusing on efficiency and effectiveness. This package is especially well-suited for calling generative AI APIs and loading web page content.
 
 ## Features
 
@@ -12,6 +12,7 @@ SwiftApiAdapter is a Swift package designed to streamline the process of retriev
 - **Flexible Header Management**: Customize request headers, including `User-Agent`, on a per-request basis.
 - **SwiftUI Integration**: Utilize SwiftUI to reactively update UI components based on API activity.
 - **Extra Data Management**: Store additional necessary information about the API using the `extraData` field.
+- **Web Page Content Loading**: Load and process web page content using the same interface as for API content.
 
 ## Installation
 
@@ -97,11 +98,54 @@ do {
     if let apiContentRack = apiContentRack {
         let resultValue = apiContentRack.arguments["result"] ?? "No result found"
         print("API Data Loaded: \(resultValue)")
-        if let extraInfo = apiContent.extraData["info"] as? String {
+        if let extraInfo = apiContent.extraData?["info"] as? String {
             print("Extra Info: \(extraInfo)")
         }
     } else {
         print("Failed to load API data.")
+    }
+} catch {
+    print("An error occurred: \(error)")
+}
+```
+
+#### Loading Web Page Content
+
+You can also use `ApiContentLoader` to load and process web page content using the same interface.
+
+1. **Define ApiContent** for a web page:
+
+```swift
+let apiContentPage = ApiContent(
+    id: UUID(),
+    name: "Web Page Content",
+    endpoint: "https://example.com/page",
+    method: .get,
+    headers: ["Authorization": "Bearer your_access_token"],
+    body: "",  // No body needed for GET request
+    contentType: .page
+)
+```
+
+2. **Load web page content using ApiContentLoader**:
+
+   Use the `ApiContentLoader.load` method to make the request and process the web page content. The `content`, `url`, and `ogimage` fields are automatically extracted and set for the `ApiContentRack`.
+
+```swift
+do {
+    let apiContentRack = try await ApiContentLoader.load(
+        contextId: UUID(),  // Context ID to uniquely identify this load operation
+        apiContent: apiContentPage
+    )
+    if let apiContentRack = apiContentRack {
+        let content = apiContentRack.arguments["content"] ?? "No content found"
+        let url = apiContentRack.arguments["url"] ?? "No URL found"
+        let ogimage = apiContentRack.arguments["ogimage"] ?? "No image found"
+        print("Web Page Content Loaded: \(content)")
+        print("URL: \(url)")
+        print("OpenGraph Image: \(ogimage)")
+    } else {
+        print("Failed to load web page content.")
     }
 } catch {
     print("An error occurred: \(error)")

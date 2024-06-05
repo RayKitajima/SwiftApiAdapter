@@ -71,4 +71,20 @@ class ApiContentTests: XCTestCase {
         XCTAssertEqual(decodedApiContent.extraData?.data["active"] as? Bool, true)
         XCTAssertNotNil(decodedApiContent.extraData?.data["nullValue"] as? NSNull)
     }
+
+    func testApiContentPageTypeInitialization() {
+        let apiContent = ApiContent(
+            id: UUID(),
+            name: "Test Page",
+            endpoint: "https://example.com/page",
+            method: .get,
+            headers: ["Authorization": "Bearer token"],
+            body: "",
+            arguments: ["content": "data.content", "url": "data.url", "ogimage": "data.ogimage"],
+            contentType: .page,
+            description: "A test page"
+        )
+        
+        XCTAssertEqual(apiContent.contentType, .page)
+    }
 }

@@ -11,6 +11,7 @@ public enum HttpMethod: String, Codable, CaseIterable {
 }
 
 public enum ContentType: String, Codable, CaseIterable {
+    case page = "PAGE"
     case text = "TEXT"
     case base64image = "BASE64_IMAGE"
     case urlImage = "URL_IMAGE"
