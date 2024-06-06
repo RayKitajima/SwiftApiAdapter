@@ -1,7 +1,7 @@
 import Foundation
 
 public struct ApiContentRack {
-    var id: UUID = UUID()
+    public var id: UUID = UUID()
     public var arguments: [String: String] = [String: String]()
 }
 
