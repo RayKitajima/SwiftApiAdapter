@@ -80,7 +80,7 @@ let apiContent = ApiContent(
     method: .get,
     headers: ["Authorization": "Bearer your_access_token"],
     body: "",  // No body needed for GET request
-    arguments: ["result": "data.result"],  // Path to extract `result` from the JSON response
+    arguments: ["result": "[\"data\"][\"result\"]"],  // Path to extract `result` from the JSON response
     extraData: ["info": "additional info"]  // Additional data
 )
 ```
