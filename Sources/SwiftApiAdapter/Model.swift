@@ -15,6 +15,19 @@ public enum ContentType: String, Codable, CaseIterable {
     case text = "TEXT"
     case base64image = "BASE64_IMAGE"
     case urlImage = "URL_IMAGE"
+
+    var displayName: String {
+        switch self {
+        case .page:
+            return "Page"
+        case .text:
+            return "Text"
+        case .base64image:
+            return "Base64 Image"
+        case .urlImage:
+            return "URL Image"
+        }
+    }
 }
 
 public struct CodableExtraData: Codable, Equatable {
