@@ -16,7 +16,7 @@ public enum ContentType: String, Codable, CaseIterable {
     case base64image = "BASE64_IMAGE"
     case urlImage = "URL_IMAGE"
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .page:
             return "Page"
