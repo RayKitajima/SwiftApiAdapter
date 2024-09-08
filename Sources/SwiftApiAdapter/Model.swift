@@ -3,6 +3,11 @@ import Foundation
 public struct ApiContentRack {
     public var id: UUID = UUID()
     public var arguments: [String: String] = [String: String]()
+
+    public init(id: UUID = UUID(), arguments: [String: String] = [String: String]()) {
+        self.id = id
+        self.arguments = arguments
+    }
 }
 
 public enum HttpMethod: String, Codable, CaseIterable {
