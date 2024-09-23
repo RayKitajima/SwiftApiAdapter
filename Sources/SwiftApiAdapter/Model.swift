@@ -109,6 +109,11 @@ public struct CodableExtraData: Codable, Equatable {
     }
 }
 
+public extension CodableExtraData {
+    func value<T>(for key: String) -> T? {
+        return data[key] as? T
+    }
+}
 
 public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
     public var id: UUID = UUID()
