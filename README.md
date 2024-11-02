@@ -129,7 +129,7 @@ let apiContentPage = ApiContent(
 
 2. **Load web page content using ApiContentLoader**:
 
-   Use the `ApiContentLoader.load` method to make the request and process the web page content. The `content`, `url`, and `ogimage` fields are automatically extracted and set for the `ApiContentRack`.
+   Use the `ApiContentLoader.load` method to make the request and process the web page content. The `content`, `url`, `ogimage` and `finalUrl` fields are automatically extracted and set for the `ApiContentRack`.
 
 ```swift
 do {
@@ -141,9 +141,11 @@ do {
         let content = apiContentRack.arguments["content"] ?? "No content found"
         let url = apiContentRack.arguments["url"] ?? "No URL found"
         let ogimage = apiContentRack.arguments["ogimage"] ?? "No image found"
+        let finalUrl = apiContentRack.arguments["finalUrl"] ?? "Actual endpoint" 
         print("Web Page Content Loaded: \(content)")
         print("URL: \(url)")
         print("OpenGraph Image: \(ogimage)")
+        print("Actual endpoint: \(finalUrl)")
     } else {
         print("Failed to load web page content.")
     }

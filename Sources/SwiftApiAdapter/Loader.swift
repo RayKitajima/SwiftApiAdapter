@@ -4,22 +4,28 @@ import SwiftyJSON
 
 public class ApiContentLoader {
     public static func load(contextId: UUID, apiContent: ApiContent) async throws -> ApiContentRack? {
-        let endoint = apiContent.endpoint
+        let endpoint = apiContent.endpoint
 
-        guard let url = URL(string: endoint) else {
+        guard let url = URL(string: endpoint) else {
             return nil
         }
 
-        let responseString = await ApiConnectorManager.shared.getRequester(for: contextId.uuidString).processJsonApi(
+        guard let apiResponse = await ApiConnectorManager.shared.getRequester(for: contextId.uuidString).processJsonApi(
             endpoint: url,
             method: apiContent.method.rawValue,
             headers: apiContent.headers,
             body: apiContent.body, /// String
             immediate: true
-        )
-        guard let responseString = responseString else {
+        ) else {
             #if DEBUG
             print("[ApiContentLoader] failed to call API")
+            #endif
+            return nil
+        }
+
+        guard let responseString = apiResponse.responseString else {
+            #if DEBUG
+            print("[ApiContentLoader] failed to get response string")
             #endif
             return nil
         }
@@ -32,16 +38,19 @@ public class ApiContentLoader {
             return nil
         }
 
+        let finalUrl = apiResponse.finalUrl ?? endpoint
+
         if apiContent.contentType == .page {
             let result = extractPage(str: responseString)
             let plainText = result.plain_text
-            let resourceUrl = result.finalUrl ?? endoint
+            let resourceUrl = result.finalUrl ?? finalUrl
             let ogimage = OpenGraphImageScraper.scrape(resourceUrl)
 
             var arguments: [String: String] = [:] // extracted argument
             arguments["content"] = plainText
             arguments["url"] = resourceUrl
             arguments["ogimage"] = ogimage ?? ""
+            arguments["finalUrl"] = finalUrl
 
             let apiContentRack = ApiContentRack(id: apiContent.id, arguments: arguments)
 
@@ -58,6 +67,9 @@ public class ApiContentLoader {
                     arguments[name] = extractedString
                 }
             }
+
+            // Include the final URL in the arguments
+            //arguments["finalUrl"] = finalUrl
 
             let apiContentRack = ApiContentRack(id: apiContent.id, arguments: arguments)
 

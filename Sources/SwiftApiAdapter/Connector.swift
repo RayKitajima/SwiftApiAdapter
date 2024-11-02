@@ -65,13 +65,14 @@ public class ApiConnector: Equatable {
 
 public struct ApiRequest {
     let requestData: Data
-    let continuation: CheckedContinuation<String?, Never>
+    let continuation: CheckedContinuation<ApiResponse, Never>
 
     let endpointURL: URL?
     let httpMethod: String?
     let headers: [String: String]?
 
-    init(requestData: Data, continuation: CheckedContinuation<String?, Never>) {
+    // Initializer for basic requests
+    init(requestData: Data, continuation: CheckedContinuation<ApiResponse, Never>) {
         self.requestData = requestData
         self.continuation = continuation
         self.endpointURL = nil
@@ -79,14 +80,19 @@ public struct ApiRequest {
         self.headers = nil
     }
 
-    // Initializer for generic JSON APIs or Page Request
-    init(requestData: Data, continuation: CheckedContinuation<String?, Never>, endpointURL: URL, httpMethod: String, headers: [String: String]) {
+    // Initializer for JSON APIs or Page Requests
+    init(requestData: Data, continuation: CheckedContinuation<ApiResponse, Never>, endpointURL: URL, httpMethod: String, headers: [String: String]) {
         self.requestData = requestData
         self.continuation = continuation
         self.endpointURL = endpointURL
         self.httpMethod = httpMethod
         self.headers = headers
     }
+}
+
+public struct ApiResponse {
+    let responseString: String?
+    let finalUrl: String?
 }
 
 public class ApiExecutionQueue {
@@ -188,9 +194,9 @@ public class ApiSerialExecutor {
         self.enabled = false
     }
 
-    public func request(_ requestData: Data) async -> String? {
+    public func request(_ requestData: Data) async -> ApiResponse? {
         DispatchQueue.main.async {
-            self.cumulativeRequested = self.cumulativeRequested + 1
+            self.cumulativeRequested += 1
         }
         return await withCheckedContinuation { continuation in
             executionContext.async {
@@ -205,14 +211,14 @@ public class ApiSerialExecutor {
 
     // MARK: - JSON API
 
-    public func requestJsonApi(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> String? {
+    public func requestJsonApi(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> ApiResponse? {
         DispatchQueue.main.async {
-            self.cumulativeRequested = self.cumulativeRequested + 1
+            self.cumulativeRequested += 1
         }
         return await withCheckedContinuation { continuation in
             executionContext.async {
                 let request = ApiRequest(
-                    requestData: requestData, /// JSON Data
+                    requestData: requestData, // JSON Data
                     continuation: continuation,
                     endpointURL: endpoint,
                     httpMethod: method,
@@ -228,7 +234,7 @@ public class ApiSerialExecutor {
         endpoint: URL,
         method: String,
         headers: [String: String],
-        continuation: CheckedContinuation<String?, Never>,
+        continuation: CheckedContinuation<ApiResponse, Never>,
         goNextRequest: (() -> Void)? = nil
     ) {
         var request = URLRequest(url: endpoint)
@@ -257,28 +263,29 @@ public class ApiSerialExecutor {
                     #if DEBUG
                     print(error.localizedDescription)
                     #endif
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: ApiResponse(responseString: nil, finalUrl: nil))
                 } else if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let data = data {
                     let responseString = String(data: data, encoding: .utf8)
-                    continuation.resume(returning: responseString)
+                    let finalUrl = httpResponse.url?.absoluteString
+                    continuation.resume(returning: ApiResponse(responseString: responseString, finalUrl: finalUrl))
                 } else {
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: ApiResponse(responseString: nil, finalUrl: nil))
                 }
             }
 
             DispatchQueue.main.async {
-                self.cumulativeExecuted = self.cumulativeExecuted + 1
+                self.cumulativeExecuted += 1
             }
             goNextRequest?()
         }
         task.resume()
     }
 
-    func executeJsonApiImmediately(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> String? {
+    func executeJsonApiImmediately(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> ApiResponse? {
         DispatchQueue.main.async {
-            self.cumulativeRequested = self.cumulativeRequested + 1
+            self.cumulativeRequested += 1
         }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+        return await withCheckedContinuation { (continuation: CheckedContinuation<ApiResponse, Never>) in
             executionContext.async {
                 let request = ApiRequest(
                     requestData: requestData,
@@ -359,7 +366,7 @@ public class ApiRequester {
         self.executor.initTransaction()
     }
 
-    public func processJsonApi(endpoint: URL, method: String, headers: [String: String], body: String, immediate: Bool = false) async -> String? {
+    public func processJsonApi(endpoint: URL, method: String, headers: [String: String], body: String, immediate: Bool = false) async -> ApiResponse? {
         let requestData: Data = Data(body.utf8)
         if immediate {
             #if DEBUG
