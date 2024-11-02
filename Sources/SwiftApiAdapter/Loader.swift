@@ -44,7 +44,7 @@ public class ApiContentLoader {
             let result = extractPage(str: responseString)
             let plainText = result.plain_text
             let resourceUrl = result.finalUrl ?? finalUrl
-            let ogimage = OpenGraphImageScraper.scrape(resourceUrl)
+            let ogimage = await OpenGraphImageScraper.scrape(resourceUrl)
 
             var arguments: [String: String] = [:] // extracted argument
             arguments["content"] = plainText
