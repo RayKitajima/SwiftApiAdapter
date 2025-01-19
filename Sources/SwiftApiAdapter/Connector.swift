@@ -140,7 +140,7 @@ public class ApiExecutionQueue {
     }
 }
 
-public class ApiSerialExecutor {
+public class ApiSerialExecutor: @unchecked Sendable {
     var enabled: Bool = false
     let queue = ApiExecutionQueue()
 
