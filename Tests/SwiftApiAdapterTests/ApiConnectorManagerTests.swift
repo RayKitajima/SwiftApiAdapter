@@ -49,11 +49,14 @@ class ApiSerialExecutorTests: XCTestCase {
         let method = "GET"
         let headers = ["Content-Type": "application/json; charset=UTF-8"]
 
-        let responseString = await executor.executeJsonApiImmediately(Data(), endpoint: endpoint, method: method, headers: headers)
+        let apiResponse = await executor.executeJsonApiImmediately(Data(), endpoint: endpoint, method: method, headers: headers)
 
-        XCTAssertNotNil(responseString)
-        if let responseString = responseString {
-            let json = try JSON(data: responseString.data(using: .utf8)!)
+        XCTAssertNotNil(apiResponse)
+
+        if let apiResponse = apiResponse, let jsonString = apiResponse.responseString {
+            let jsonData = jsonString.data(using: .utf8)!
+            let json = try JSON(data: jsonData)
+
             XCTAssertEqual(json["title"].string, "sunt aut facere repellat provident occaecati excepturi optio reprehenderit")
             XCTAssertEqual(json["body"].string, "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto")
             XCTAssertEqual(json["userId"].int, 1)
