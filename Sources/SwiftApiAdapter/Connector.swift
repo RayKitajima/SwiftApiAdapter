@@ -238,17 +238,27 @@ public class ApiSerialExecutor: @unchecked Sendable {
         goNextRequest: (() -> Void)? = nil
     ) {
         var request = URLRequest(url: endpoint)
-        request.httpMethod = method
+
+        // If method is GET and there's a body, do not attach httpBody
+        if method.uppercased() == "GET" && !executionRequest.requestData.isEmpty {
+            #if DEBUG
+            print("[ApiSerialExecutor] GET request with body is not allowed; ignoring body.")
+            #endif
+            request.httpMethod = method
+        } else {
+            request.httpMethod = method
+            // normal body-attachment steps
+            if let requestJson = try? JSONSerialization.jsonObject(with: executionRequest.requestData, options: []) as? [String: Any] {
+                if let requestBody = try? JSONSerialization.data(withJSONObject: requestJson, options: []) {
+                    request.httpBody = requestBody
+                }
+            }
+        }
+
         request.addValue(DEFAULT_USER_AGENT, forHTTPHeaderField: "User-Agent")
         for (key, value) in headers {
             if !key.isEmpty && !value.isEmpty {
                 request.addValue(value, forHTTPHeaderField: key)
-            }
-        }
-
-        if let requestJson = try? JSONSerialization.jsonObject(with: executionRequest.requestData, options: []) as? [String: Any] {
-            if let requestBody = try? JSONSerialization.data(withJSONObject: requestJson, options: []) {
-                request.httpBody = requestBody
             }
         }
 

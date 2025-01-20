@@ -14,6 +14,10 @@ SwiftApiAdapter is a Swift package designed to streamline the process of retriev
 - **Extra Data Management**: Store additional necessary information about the API using the `extraData` field.
 - **Web Page Content Loading**: Load and process web page content using the same interface as for API content.
 
+### Important Note About `GET` Requests
+
+In compliance with standard HTTP usage, **SwiftApiAdapter does not attach any request body if the HTTP method is `GET`**. If your configuration specifies `GET` along with a non-empty body, the body will be ignored. If you need to send a payload, please switch to a method like `POST` or `PUT`.
+
 ## Installation
 
 ### Swift Package Manager
@@ -22,7 +26,7 @@ Add SwiftApiAdapter to your project via Swift Package Manager by including it in
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/yourusername/SwiftApiAdapter.git", from: "1.0.0")
+    .package(url: "https://github.com/RayKitajima/SwiftApiAdapter.git", from: "1.0.0")
 ]
 ```
 
@@ -60,7 +64,7 @@ let response = await apiConnector.requester.processJsonApi(
     endpoint: endpoint,
     method: "GET",
     headers: headers,
-    body: "" // Empty body for GET request
+    body: "" // Empty body for GET request; otherwise body is ignored
 )
 ```
 
@@ -266,12 +270,24 @@ class ApiController: ObservableObject {
     @Published var imageData: Data?
 
     func loadImageContent() async {
+        let apiContentImage = ApiContent(
+            id: UUID(),
+            name: "Image API Content",
+            endpoint: "https://exampleapi.com/image",
+            method: .get,
+            headers: ["Authorization": "Bearer your_access_token"],
+            body: "",
+            arguments: ["image": "[\"data\"][0][\"message\"][\"content\"]"],
+            contentType: .base64image
+        )
+
         do {
             let apiContentRack = try await ApiContentLoader.load(
                 contextId: UUID(),
                 apiContent: apiContentImage
             )
-            if let apiContentRack = apiContentRack, let base64String = apiContentRack.arguments["image"],
+            if let apiContentRack = apiContentRack,
+               let base64String = apiContentRack.arguments["image"],
                let imageData = Data(base64Encoded: base64String) {
                 DispatchQueue.main.async {
                     self.imageData = imageData
@@ -330,12 +346,24 @@ class ApiController: ObservableObject {
     @Published var textData: String?
 
     func loadTextContent() async {
+        let apiContentText = ApiContent(
+            id: UUID(),
+            name: "Text API Content",
+            endpoint: "https://exampleapi.com/text",
+            method: .get,
+            headers: ["Authorization": "Bearer your_access_token"],
+            body: "",
+            arguments: ["text": "[\"choices\"][0][\"message\"][\"content\"]"],
+            contentType: .text
+        )
+
         do {
             let apiContentRack = try await ApiContentLoader.load(
                 contextId: UUID(),
                 apiContent: apiContentText
             )
-            if let apiContentRack = apiContentRack, let text = apiContentRack.arguments["text"] {
+            if let apiContentRack = apiContentRack,
+               let text = apiContentRack.arguments["text"] {
                 DispatchQueue.main.async {
                     self.textData = text
                 }
@@ -371,7 +399,7 @@ ApiConnectorManager.shared.clearAllConnectors()
 
 ## Configuration
 
-You can customize headers for each API request, allowing the setting of `User-Agent` and other necessary headers depending on the endpoint requirements.
+You can customize headers for each API request, allowing the setting of `User-Agent` and other necessary headers depending on the endpoint requirements. However, remember that **for GET requests, any provided body data will be ignored**.
 
 ## Contributing
 
