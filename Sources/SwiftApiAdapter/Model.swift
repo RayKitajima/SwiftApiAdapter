@@ -49,45 +49,161 @@ public struct CodableExtraData: Codable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         var dataContainer = container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: .data)
+
         for (key, value) in data {
             let codingKey = DynamicCodingKeys(stringValue: key)!
-            if let intValue = value as? Int {
-                try dataContainer.encode(intValue, forKey: codingKey)
-            } else if let doubleValue = value as? Double {
-                try dataContainer.encode(doubleValue, forKey: codingKey)
-            } else if let stringValue = value as? String {
-                try dataContainer.encode(stringValue, forKey: codingKey)
-            } else if let boolValue = value as? Bool {
-                try dataContainer.encode(boolValue, forKey: codingKey)
-            } else if value is NSNull {
-                try dataContainer.encodeNil(forKey: codingKey)
-            } else {
-                throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: [codingKey], debugDescription: "Invalid value"))
-            }
+            try encodeValue(value, into: &dataContainer, forKey: codingKey)
         }
     }
+
+    private func encodeValue(_ value: Any,
+                             into container: inout KeyedEncodingContainer<DynamicCodingKeys>,
+                             forKey codingKey: DynamicCodingKeys) throws {
+        switch value {
+        case is NSNull:
+            try container.encodeNil(forKey: codingKey)
+
+        case let v as Int:
+            try container.encode(v, forKey: codingKey)
+        case let v as Double:
+            try container.encode(v, forKey: codingKey)
+        case let v as String:
+            try container.encode(v, forKey: codingKey)
+        case let v as Bool:
+            try container.encode(v, forKey: codingKey)
+
+        case let v as [Any]:
+            var nestedUnkeyedContainer = container.nestedUnkeyedContainer(forKey: codingKey)
+            for element in v {
+                try encodeUnkeyedValue(element, into: &nestedUnkeyedContainer)
+            }
+
+        case let v as [String: Any]:
+            var nestedContainer = container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: codingKey)
+            for (nestedKey, nestedValue) in v {
+                let nestedCodingKey = DynamicCodingKeys(stringValue: nestedKey)!
+                try encodeValue(nestedValue, into: &nestedContainer, forKey: nestedCodingKey)
+            }
+
+        default:
+            throw EncodingError.invalidValue(
+                value,
+                EncodingError.Context(codingPath: container.codingPath + [codingKey],
+                                      debugDescription: "Invalid value in CodableExtraData")
+            )
+        }
+    }
+
+    /// Recursively encodes any element inside an array
+    private func encodeUnkeyedValue(_ value: Any,
+                                    into container: inout UnkeyedEncodingContainer) throws {
+        switch value {
+        case is NSNull:
+            try container.encodeNil()
+
+        case let v as Int:
+            try container.encode(v)
+        case let v as Double:
+            try container.encode(v)
+        case let v as String:
+            try container.encode(v)
+        case let v as Bool:
+            try container.encode(v)
+
+        case let v as [Any]:
+            var nestedUnkeyedContainer = container.nestedUnkeyedContainer()
+            for element in v {
+                try encodeUnkeyedValue(element, into: &nestedUnkeyedContainer)
+            }
+
+        case let v as [String: Any]:
+            var nestedContainer = container.nestedContainer(keyedBy: DynamicCodingKeys.self)
+            for (nestedKey, nestedValue) in v {
+                let nestedCodingKey = DynamicCodingKeys(stringValue: nestedKey)!
+                try encodeValue(nestedValue, into: &nestedContainer, forKey: nestedCodingKey)
+            }
+
+        default:
+            throw EncodingError.invalidValue(
+                value,
+                EncodingError.Context(codingPath: container.codingPath,
+                                      debugDescription: "Invalid value in array within CodableExtraData")
+            )
+        }
+    }
+
+    // MARK: - Decodable
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let dataContainer = try container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: .data)
-        var data: [String: Any] = [:]
-        for key in dataContainer.allKeys {
-            if let intValue = try? dataContainer.decode(Int.self, forKey: key) {
-                data[key.stringValue] = intValue
-            } else if let doubleValue = try? dataContainer.decode(Double.self, forKey: key) {
-                data[key.stringValue] = doubleValue
-            } else if let stringValue = try? dataContainer.decode(String.self, forKey: key) {
-                data[key.stringValue] = stringValue
-            } else if let boolValue = try? dataContainer.decode(Bool.self, forKey: key) {
-                data[key.stringValue] = boolValue
-            } else if try dataContainer.decodeNil(forKey: key) {
-                print("decodeNil: \(key)")
-                data[key.stringValue] = NSNull()
+        self.data = try Self.decodeDictionary(from: dataContainer)
+    }
+
+    private static func decodeDictionary(from container: KeyedDecodingContainer<DynamicCodingKeys>) throws -> [String: Any] {
+        var result: [String: Any] = [:]
+
+        for key in container.allKeys {
+            if try container.decodeNil(forKey: key) {
+                result[key.stringValue] = NSNull()
+                continue
+            }
+
+            // Attempt to decode all possible types
+            if let intValue = try? container.decode(Int.self, forKey: key) {
+                result[key.stringValue] = intValue
+            } else if let doubleValue = try? container.decode(Double.self, forKey: key) {
+                result[key.stringValue] = doubleValue
+            } else if let boolValue = try? container.decode(Bool.self, forKey: key) {
+                result[key.stringValue] = boolValue
+            } else if let stringValue = try? container.decode(String.self, forKey: key) {
+                result[key.stringValue] = stringValue
+            } else if var unkeyedContainer = try? container.nestedUnkeyedContainer(forKey: key) {
+                // decode array
+                result[key.stringValue] = try decodeArray(from: &unkeyedContainer)
+            } else if let nestedContainer = try? container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: key) {
+                // decode dictionary
+                result[key.stringValue] = try decodeDictionary(from: nestedContainer)
             } else {
-                throw DecodingError.dataCorruptedError(forKey: key, in: dataContainer, debugDescription: "Invalid value")
+                throw DecodingError.dataCorruptedError(forKey: key,
+                    in: container,
+                    debugDescription: "Invalid value for key \(key.stringValue) in CodableExtraData"
+                )
             }
         }
-        self.data = data
+
+        return result
+    }
+
+    private static func decodeArray(from container: inout UnkeyedDecodingContainer) throws -> [Any] {
+        var result: [Any] = []
+
+        while !container.isAtEnd {
+            if try container.decodeNil() {
+                result.append(NSNull())
+                continue
+            }
+
+            if let intValue = try? container.decode(Int.self) {
+                result.append(intValue)
+            } else if let doubleValue = try? container.decode(Double.self) {
+                result.append(doubleValue)
+            } else if let boolValue = try? container.decode(Bool.self) {
+                result.append(boolValue)
+            } else if let stringValue = try? container.decode(String.self) {
+                result.append(stringValue)
+            } else if var nestedUnkeyedContainer = try? container.nestedUnkeyedContainer() {
+                // nested array
+                result.append(try decodeArray(from: &nestedUnkeyedContainer))
+            } else if let nestedContainer = try? container.nestedContainer(keyedBy: DynamicCodingKeys.self) {
+                // nested dictionary
+                result.append(try decodeDictionary(from: nestedContainer))
+            } else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid array element in CodableExtraData.")
+            }
+        }
+
+        return result
     }
 
     public static func == (lhs: CodableExtraData, rhs: CodableExtraData) -> Bool {
