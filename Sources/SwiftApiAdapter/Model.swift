@@ -242,6 +242,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
     public var contentType: ContentType = .text
     public var description: String?
     public var extraData: CodableExtraData?
+    public var lastModified: Date = Date()
 
     public init(
         id: UUID = UUID(),
@@ -253,7 +254,8 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         arguments: [String: String] = [String: String](),
         contentType: ContentType = .text,
         description: String? = nil,
-        extraData: [String: Any]? = nil
+        extraData: [String: Any]? = nil,
+        lastModified: Date = Date()
     ) {
         self.id = id
         self.name = name
@@ -265,6 +267,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         self.contentType = contentType
         self.description = description
         self.extraData = extraData != nil ? CodableExtraData(data: extraData!) : nil
+        self.lastModified = lastModified
     }
 
     init() {
@@ -278,6 +281,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         self.contentType = .text
         self.description = nil
         self.extraData = nil
+        self.lastModified = Date()
     }
 
     func isValid() -> Bool {
@@ -299,7 +303,8 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
             lhs.contentType == rhs.contentType &&
             lhs.description == rhs.description &&
             lhs.description == rhs.description &&
-            lhs.extraData == rhs.extraData
+            lhs.extraData == rhs.extraData &&
+            lhs.lastModified == rhs.lastModified
     }
 
     enum CodingKeys: String, CodingKey {
@@ -313,6 +318,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         case contentType
         case description
         case extraData
+        case lastModified
     }
 
     public init(from decoder: Decoder) throws {
@@ -327,6 +333,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         self.contentType = try container.decode(ContentType.self, forKey: .contentType)
         self.description = try container.decodeIfPresent(String.self, forKey: .description)
         self.extraData = try container.decodeIfPresent(CodableExtraData.self, forKey: .extraData)
+        self.lastModified = try container.decodeIfPresent(Date.self, forKey: .lastModified) ?? Date()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -341,6 +348,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
         try container.encode(self.contentType, forKey: .contentType)
         try container.encodeIfPresent(self.description, forKey: .description)
         try container.encodeIfPresent(self.extraData, forKey: .extraData)
+        try container.encode(self.lastModified, forKey: .lastModified)
     }
 }
 
@@ -356,6 +364,7 @@ public extension ApiContent {
         public var contentType: ContentType = .text
         public var description: String?
         public var extraData: CodableExtraData?
+        public var lastModified: Date = Date()
 
         public func isValid() -> Bool {
             return !name.isEmpty && !endpoint.isEmpty
@@ -372,6 +381,7 @@ public extension ApiContent {
             self.contentType = .text
             self.description = nil
             self.extraData = nil
+            self.lastModified = Date()
         }
 
         public init(
@@ -384,7 +394,8 @@ public extension ApiContent {
             arguments: [String: String] = [String: String](),
             contentType: ContentType = .text,
             description: String? = nil,
-            extraData: [String: Any]? = nil
+            extraData: [String: Any]? = nil,
+            lastModified: Date = Date()
         ) {
             self.id = id
             self.name = name
@@ -396,6 +407,7 @@ public extension ApiContent {
             self.contentType = contentType
             self.description = description
             self.extraData = extraData != nil ? CodableExtraData(data: extraData!) : nil
+            self.lastModified = lastModified
         }
     }
 
@@ -410,7 +422,8 @@ public extension ApiContent {
             arguments: self.arguments,
             contentType: self.contentType,
             description: self.description,
-            extraData: self.extraData?.data
+            extraData: self.extraData?.data,
+            lastModified: self.lastModified
         )
     }
 
@@ -425,6 +438,7 @@ public extension ApiContent {
         self.contentType = data.contentType
         self.description = data.description
         self.extraData = data.extraData
+        self.lastModified = data.lastModified
     }
 
     init(from data: Data) {
@@ -438,5 +452,6 @@ public extension ApiContent {
         self.contentType = data.contentType
         self.description = data.description
         self.extraData = data.extraData
+        self.lastModified = data.lastModified
     }
 }
