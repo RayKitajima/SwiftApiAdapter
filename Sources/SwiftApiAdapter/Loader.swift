@@ -1,6 +1,6 @@
-
 import Foundation
 import SwiftyJSON
+import SwiftSoup
 
 public class ApiContentLoader {
     public static func load(contextId: UUID, apiContent: ApiContent) async throws -> ApiContentRack? {
@@ -38,22 +38,21 @@ public class ApiContentLoader {
             return nil
         }
 
-        let finalUrl = apiResponse.finalUrl ?? endpoint
-
         if apiContent.contentType == .page {
             let result = extractPage(str: responseString)
             let plainText = result.plain_text
-            let resourceUrl = result.finalUrl ?? finalUrl
+            let pageTitle = result.page_title
+            let resourceUrl = apiResponse.finalUrl ?? endpoint
             let ogimage = await OpenGraphImageScraper.scrape(resourceUrl)
 
-            var arguments: [String: String] = [:] // extracted argument
+            var arguments: [String: String] = [:]
+            arguments["pageTitle"] = pageTitle ?? ""
             arguments["content"] = plainText
             arguments["url"] = resourceUrl
             arguments["ogimage"] = ogimage ?? ""
-            arguments["finalUrl"] = finalUrl
+            arguments["finalUrl"] = resourceUrl // For backward compatibility,`url` and `finalUrl` are the same.
 
             let apiContentRack = ApiContentRack(id: apiContent.id, arguments: arguments)
-
             return apiContentRack
         } else {
             let responseJson = try JSON(data: responseData)
@@ -67,9 +66,6 @@ public class ApiContentLoader {
                     arguments[name] = extractedString
                 }
             }
-
-            // Include the final URL in the arguments
-            //arguments["finalUrl"] = finalUrl
 
             let apiContentRack = ApiContentRack(id: apiContent.id, arguments: arguments)
 
@@ -105,18 +101,14 @@ public class ApiContentLoader {
         return nil
     }
 
-    static func extractPage(str: String) -> (plain_text: String, finalUrl: String?) {
-        let lines = str.split(separator: "\n")
-
-        // Assuming the last line contains the finalUrl information
-        let finalUrlLine = lines.last ?? ""
-
-        let finalUrlPrefix = "finalUrl:"
-        if finalUrlLine.hasPrefix(finalUrlPrefix) {
-            let finalUrl = String(finalUrlLine.dropFirst(finalUrlPrefix.count))
-            let plain_text = lines.dropLast().joined(separator: "\n")
-            return (plain_text, finalUrl == "nil" ? nil : finalUrl)
+    static func extractPage(str: String) -> (plain_text: String, page_title: String?) {
+        do {
+            let doc = try SwiftSoup.parse(str)
+            let title = try doc.title()
+            let text = try doc.text()
+            return (plain_text: text, page_title: title)
+        } catch {
+            return (plain_text: str, page_title: nil)
         }
-        return (str, nil)  // Return the original data and nil if finalUrl isn't found
     }
 }
