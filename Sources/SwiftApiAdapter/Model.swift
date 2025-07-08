@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ApiContentRack {
+public struct ApiContentRack: Sendable {
     public var id: UUID = UUID()
     public var arguments: [String: String] = [String: String]()
 
@@ -10,12 +10,12 @@ public struct ApiContentRack {
     }
 }
 
-public enum HttpMethod: String, Codable, CaseIterable {
+public enum HttpMethod: String, Codable, CaseIterable, Sendable {
     case get = "GET"
     case post = "POST"
 }
 
-public enum ContentType: String, Codable, CaseIterable {
+public enum ContentType: String, Codable, CaseIterable, Sendable {
     case page = "PAGE"
     case text = "TEXT"
     case base64image = "BASE64_IMAGE"
@@ -35,7 +35,7 @@ public enum ContentType: String, Codable, CaseIterable {
     }
 }
 
-public struct CodableExtraData: Codable, Equatable {
+public struct CodableExtraData: Codable, Equatable, @unchecked Sendable {
     public var data: [String: Any]
 
     public init(data: [String: Any]) {
@@ -231,7 +231,7 @@ public extension CodableExtraData {
     }
 }
 
-public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
+public struct ApiContent: Identifiable, Codable, Equatable, Hashable, Sendable {
     public var id: UUID = UUID()
     public var name: String = String()
     public var endpoint: String = String()
@@ -353,7 +353,7 @@ public struct ApiContent: Identifiable, Codable, Equatable, Hashable {
 }
 
 public extension ApiContent {
-    struct Data: Codable, Equatable {
+    struct Data: Codable, Equatable, Sendable {
         public var id: UUID = UUID()
         public var name: String = String()
         public var endpoint: String = String()
