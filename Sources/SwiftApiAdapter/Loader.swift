@@ -6,6 +6,10 @@ import SwiftSoup
 import ImagePlayground
 #endif
 
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -74,6 +78,48 @@ private struct ImagePlaygroundRequestBody: Decodable {
     var limit: Int?
 }
 
+enum FoundationModelsGeneratorError: Error {
+    case osTooOld
+    case generationFailed
+}
+
+struct FoundationModelsGenerator {
+    static func generate(prompt: String,
+                         instructions: String? = nil,
+                         temperature: Double? = nil,
+                         maxTokens: Int? = nil) async throws -> String {
+
+        #if canImport(FoundationModels)
+        // Create or reuse a session
+        let session: LanguageModelSession = {
+            if let instructions, !instructions.isEmpty {
+                return LanguageModelSession(instructions: instructions)
+            } else {
+                return LanguageModelSession()
+            }
+        }()
+
+        // Prepare generation options (all are optional)
+        var opts = GenerationOptions()
+        if let temperature          { opts.temperature    = temperature }
+        if let maxTokens            { opts.maximumTokens  = maxTokens  }
+
+        // Ask the model
+        let response = try await session.respond(to: prompt, options: opts)
+        return response.content                                // :contentReference[oaicite:0]{index=0}
+        #else
+        throw FoundationModelsGeneratorError.osTooOld
+        #endif
+    }
+}
+
+private struct FoundationModelsRequestBody: Decodable {
+    let prompt: String
+    let instructions: String?
+    let temperature: Double?
+    let maxTokens: Int?
+}
+
 public class ApiContentLoader {
     public static func load(contextId: UUID, apiContent: ApiContent) async throws -> ApiContentRack? {
         if apiContent.endpoint.hasPrefix("imageplayground://") {
@@ -93,6 +139,28 @@ public class ApiContentLoader {
                     return nil
                 }
             } else {
+                return nil
+            }
+        }
+
+        if apiContent.endpoint.hasPrefix("foundationmodels://") {
+            guard let data = apiContent.body.data(using: .utf8) else { return nil }
+            do {
+                let body = try JSONDecoder().decode(FoundationModelsRequestBody.self, from: data)
+                let generated = try await FoundationModelsGenerator.generate(
+                    prompt:        body.prompt,
+                    instructions:  body.instructions,
+                    temperature:   body.temperature,
+                    maxTokens:     body.maxTokens
+                )
+                return ApiContentRack(
+                    id: apiContent.id,
+                    arguments: ["content": generated]
+                )
+            } catch {
+                #if DEBUG
+                print("[ApiContentLoader] FoundationModels generation failed: \(error)")
+                #endif
                 return nil
             }
         }
