@@ -161,7 +161,7 @@ public class ApiContentLoader {
 
                     return ApiContentRack(
                         id: apiContent.id,
-                        arguments: ["content": generated]
+                        arguments: ["text": generated]
                     )
                 } else {
                     #if DEBUG
