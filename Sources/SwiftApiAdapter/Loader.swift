@@ -83,6 +83,7 @@ enum FoundationModelsGeneratorError: Error {
     case generationFailed
 }
 
+@available(iOS 26.0, macOS 26.0, visionOS 26.0, *)
 struct FoundationModelsGenerator {
     static func generate(prompt: String,
                          instructions: String? = nil,
@@ -101,8 +102,8 @@ struct FoundationModelsGenerator {
 
         // Prepare generation options (all are optional)
         var opts = GenerationOptions()
-        if let temperature          { opts.temperature    = temperature }
-        if let maxTokens            { opts.maximumTokens  = maxTokens  }
+        if let temperature { opts.temperature            = temperature }
+        if let maxTokens   { opts.maximumResponseTokens  = maxTokens }
 
         // Ask the model
         let response = try await session.respond(to: prompt, options: opts)
@@ -145,18 +146,33 @@ public class ApiContentLoader {
 
         if apiContent.endpoint.hasPrefix("foundationmodels://") {
             guard let data = apiContent.body.data(using: .utf8) else { return nil }
+
             do {
                 let body = try JSONDecoder().decode(FoundationModelsRequestBody.self, from: data)
-                let generated = try await FoundationModelsGenerator.generate(
-                    prompt:        body.prompt,
-                    instructions:  body.instructions,
-                    temperature:   body.temperature,
-                    maxTokens:     body.maxTokens
-                )
-                return ApiContentRack(
-                    id: apiContent.id,
-                    arguments: ["content": generated]
-                )
+
+                #if canImport(FoundationModels)
+                if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) {
+                    let generated = try await FoundationModelsGenerator.generate(
+                        prompt:       body.prompt,
+                        instructions: body.instructions,
+                        temperature:  body.temperature,
+                        maxTokens:    body.maxTokens
+                    )
+
+                    return ApiContentRack(
+                        id: apiContent.id,
+                        arguments: ["content": generated]
+                    )
+                } else {
+                    #if DEBUG
+                    print("[ApiContentLoader] FoundationModels not supported on this OS version")
+                    #endif
+                    return nil
+                }
+                #else
+                return nil
+                #endif
+
             } catch {
                 #if DEBUG
                 print("[ApiContentLoader] FoundationModels generation failed: \(error)")
