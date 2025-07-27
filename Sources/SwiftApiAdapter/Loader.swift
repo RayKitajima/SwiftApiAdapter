@@ -107,7 +107,7 @@ struct FoundationModelsGenerator {
 
         // Ask the model
         let response = try await session.respond(to: prompt, options: opts)
-        return response.content                                // :contentReference[oaicite:0]{index=0}
+        return response.content
         #else
         throw FoundationModelsGeneratorError.osTooOld
         #endif
