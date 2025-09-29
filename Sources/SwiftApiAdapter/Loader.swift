@@ -122,11 +122,31 @@ private struct FoundationModelsRequestBody: Decodable {
 }
 
 public class ApiContentLoader {
+    /// Marks the start of a non-HTTP generation "request" (e.g., imageplayground/foundationmodels)
+    /// and returns a closure that must be called to mark completion.
+    /// This aligns the counters with how ApiSerialExecutor tracks HTTP requests.
+    private static func markRequestStart(for contextId: UUID) -> () -> Void {
+        let executor = ApiConnectorManager.shared.getExecutor(for: contextId.uuidString)
+        DispatchQueue.main.async {
+            executor.cumulativeRequested += 1
+        }
+        return {
+            DispatchQueue.main.async {
+                executor.cumulativeExecuted += 1
+            }
+        }
+    }
+
     public static func load(contextId: UUID, apiContent: ApiContent) async throws -> ApiContentRack? {
         if apiContent.endpoint.hasPrefix("imageplayground://") {
             if let data = apiContent.body.data(using: .utf8) {
                 do {
                     let body = try JSONDecoder().decode(ImagePlaygroundRequestBody.self, from: data)
+
+                    // Track request/execute for ImagePlayground generation
+                    let finish = Self.markRequestStart(for: contextId)
+                    defer { finish() }
+
                     let base64 = try await ImagePlaygroundGenerator.generate(
                         prompt: body.prompt,
                         styleString: body.style,
@@ -149,6 +169,10 @@ public class ApiContentLoader {
 
             do {
                 let body = try JSONDecoder().decode(FoundationModelsRequestBody.self, from: data)
+
+                // Track request/execute for FoundationModels generation
+                let finish = Self.markRequestStart(for: contextId)
+                defer { finish() }
 
                 #if canImport(FoundationModels)
                 if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) {
