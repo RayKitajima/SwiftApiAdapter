@@ -1,396 +1,462 @@
 import Foundation
-import Combine
-import SwiftSoup
-import SwiftyJSON
 
-let DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
-public class ApiConnectorManager: ObservableObject {
+public let DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36"
+
+// MARK: - Connector Manager
+
+/// A lightweight registry for per-context connectors.
+///
+/// Swift 6 migration notes:
+/// - This is now an `actor` to make access to the connector cache data-race safe.
+/// - All public APIs remain similar, but calls must be awaited when invoked off the actor.
+public actor ApiConnectorManager {
     public static let shared = ApiConnectorManager()
-    private init(){}
+    private init() {}
 
-    private var connector: [String: ApiConnector] = [:]
+    private var connectors: [String: ApiConnector] = [:]
 
     public func getConnector(for tag: String) -> ApiConnector {
-        if let connector = connector[tag] {
-            return connector
+        if let existing = connectors[tag] {
+            return existing
         }
-        let connector = ApiConnector()
-        self.connector[tag] = connector
-        return connector
+        let newConnector = ApiConnector()
+        connectors[tag] = newConnector
+        return newConnector
     }
 
-    public func clearConnector(for tag: String) {
-        connector[tag]?.executor.stop()
-        connector[tag] = nil
+    public func clearConnector(for tag: String) async {
+        if let connector = connectors[tag] {
+            await connector.executor.stop()
+            connectors[tag] = nil
+        }
     }
 
-    public func clearAllConnectors() {
-        connector = [:]
+    public func clearAllConnectors() async {
+        for (_, connector) in connectors {
+            await connector.executor.stop()
+        }
+        connectors.removeAll()
     }
 
     public func getRequester(for tag: String) -> ApiRequester {
-        return getConnector(for: tag).requester
+        getConnector(for: tag).requester
     }
 
     public func getExecutor(for tag: String) -> ApiSerialExecutor {
-        return getConnector(for: tag).executor
+        getConnector(for: tag).executor
     }
 }
 
-public class ApiConnector: Equatable {
+// MARK: - Connector
+
+public struct ApiConnector: Sendable, Equatable {
     public let executor: ApiSerialExecutor
     public let requester: ApiRequester
 
-    init() {
-        executor = ApiSerialExecutor()
-        requester = ApiRequester(executor: executor)
+    public init() {
+        let executor = ApiSerialExecutor()
+        self.executor = executor
+        self.requester = ApiRequester(executor: executor)
     }
 
-    public func initTransaction() {
-        DispatchQueue.main.async {
-            self.executor.cumulativeRequested = 0
-            self.executor.cumulativeExecuted = 0
-        }
+    public func initTransaction() async {
+        await executor.initTransaction()
     }
 
-    public func stop() {
-        executor.stop()
+    public func stop() async {
+        await executor.stop()
     }
 
     public static func == (lhs: ApiConnector, rhs: ApiConnector) -> Bool {
-        return lhs.executor === rhs.executor && lhs.requester === rhs.requester
+        ObjectIdentifier(lhs.executor) == ObjectIdentifier(rhs.executor)
     }
 }
 
-public struct ApiRequest {
-    let requestData: Data
-    let continuation: CheckedContinuation<ApiResponse, Never>
+// MARK: - Response
 
-    let endpointURL: URL?
-    let httpMethod: String?
-    let headers: [String: String]?
+public struct ApiResponse: Sendable, Equatable {
+    public let responseString: String?
+    public let finalUrl: String?
+    public let statusCode: Int?
+    public let headers: [String: String]
+    public let errorDescription: String?
 
-    // Initializer for basic requests
-    init(requestData: Data, continuation: CheckedContinuation<ApiResponse, Never>) {
-        self.requestData = requestData
-        self.continuation = continuation
-        self.endpointURL = nil
-        self.httpMethod = nil
-        self.headers = nil
-    }
-
-    // Initializer for JSON APIs or Page Requests
-    init(requestData: Data, continuation: CheckedContinuation<ApiResponse, Never>, endpointURL: URL, httpMethod: String, headers: [String: String]) {
-        self.requestData = requestData
-        self.continuation = continuation
-        self.endpointURL = endpointURL
-        self.httpMethod = httpMethod
+    /// Backward-compatible initializer.
+    ///
+    /// - Parameters:
+    ///   - responseString: Raw response body as UTF-8 string (if decodable).
+    ///   - finalUrl: Final URL after redirects (if available).
+    ///   - statusCode: HTTP status code (if available).
+    ///   - headers: HTTP response headers (if available).
+    ///   - errorDescription: Any execution error (e.g. network failures).
+    public init(
+        responseString: String?,
+        finalUrl: String?,
+        statusCode: Int? = nil,
+        headers: [String: String] = [:],
+        errorDescription: String? = nil
+    ) {
+        self.responseString = responseString
+        self.finalUrl = finalUrl
+        self.statusCode = statusCode
         self.headers = headers
+        self.errorDescription = errorDescription
     }
 }
 
-public struct ApiResponse {
-    let responseString: String?
-    let finalUrl: String?
-}
 
-public class ApiExecutionQueue {
-    private var dispatchQueue = DispatchQueue(label: "SwiftApiAdapter.ApiExecutionQueue")
-    private var queue: [ApiRequest] = []
+// MARK: - Serial Executor
 
-    func push(_ request: ApiRequest?) {
-        guard let request = request else {
-            return
-        }
-        dispatchQueue.async {
-            self.queue.append(request)
-        }
+/// A single-threaded (serial) request executor implemented with structured concurrency.
+///
+/// - Requests submitted through `requestJsonApi` are executed strictly one-at-a-time.
+/// - `executeJsonApiImmediately` bypasses the queue.
+/// - `stop()` cancels the worker task and resumes any queued requests with an empty response.
+public actor ApiSerialExecutor {
+    public struct Metrics: Sendable, Equatable {
+        public let cumulativeRequested: Int
+        public let cumulativeExecuted: Int
     }
 
-    func insertAtBeginning(_ request: ApiRequest?) {
-        guard let request = request else {
-            return
-        }
-        dispatchQueue.async {
-            self.queue.insert(request, at: 0)
-        }
+    private struct Job {
+        let requestData: Data
+        let endpoint: URL
+        let method: String
+        let headers: [String: String]
+        let continuation: CheckedContinuation<ApiResponse?, Never>
     }
 
-    /// NOTE: Potential for Deadlocks with sync
+    private var enabled: Bool = false
+    private var queue: [Job] = []
+
+    // A single worker that drains `queue`.
+    private var workerTask: Task<Void, Never>?
+    private var waitForWorkContinuation: CheckedContinuation<Void, Never>?
+
+    private let session: URLSession
+    private let delayBetweenRequests: Duration
+
+    // Observability via AsyncStream, for SwiftUI or other consumers.
+    private var metricsContinuations: [UUID: AsyncStream<Metrics>.Continuation] = [:]
+
+    public private(set) var cumulativeRequested: Int = 0
+    public private(set) var cumulativeExecuted: Int = 0
+
+    public init(
+        delayBetweenRequests: Duration = .milliseconds(500),
+        timeoutIntervalForRequest: TimeInterval = 180
+    ) {
+        self.delayBetweenRequests = delayBetweenRequests
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = timeoutIntervalForRequest
+        self.session = URLSession(configuration: config)
+    }
+
+    deinit {
+        workerTask?.cancel()
+    }
+
+    // MARK: Observability
+
+    public func metrics() -> Metrics {
+        Metrics(cumulativeRequested: cumulativeRequested, cumulativeExecuted: cumulativeExecuted)
+    }
+
+    /// Subscribe to metrics updates.
     ///
-    /// While using sync, be cautious. If another task running on dispatchQueue tries to call pop(),
-    /// you'll have a deadlock. Given you're using a global queue, this is especially concerning.
-    ///
-    func pop() -> ApiRequest? {
-        var request: ApiRequest? = nil
-        dispatchQueue.sync {
-            guard !self.queue.isEmpty else {
-                return
-            }
-            request = self.queue.removeFirst()
-        }
-        return request
-    }
+    /// The returned stream yields the current metrics immediately and then yields on every update.
+    public func metricsUpdates() -> AsyncStream<Metrics> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            continuation.yield(self.metrics())
+            self.metricsContinuations[id] = continuation
 
-    func clear() {
-        dispatchQueue.async {
-            self.queue.removeAll()
-        }
-    }
-}
-
-public class ApiSerialExecutor: @unchecked Sendable {
-    var enabled: Bool = false
-    let queue = ApiExecutionQueue()
-
-    @Published public var cumulativeRequested: Int = 0
-    @Published public var cumulativeExecuted: Int = 0
-
-    private let executionContext = DispatchQueue(label: "SwiftApiAdapter.ApiSerialExecutor.executionContext", qos: .userInitiated)
-
-    public struct Response: Codable {
-        var id: String
-        var object: String
-        var created: Int
-    }
-
-    public struct ResponseHandler {
-        func decodeJson(jsonString: String) -> ApiSerialExecutor.Response? {
-            let json = jsonString.data(using: .utf8)!
-
-            let decoder = JSONDecoder()
-            do {
-                let product = try decoder.decode(ApiSerialExecutor.Response.self, from: json)
-                return product
-            } catch {
-                #if DEBUG
-                print("[ApiSerialExecutor] Error decoding API Response: \(error)")
-                #endif
-                return nil
+            continuation.onTermination = { _ in
+                Task { await self.removeMetricsContinuation(id) }
             }
         }
     }
+
+    private func removeMetricsContinuation(_ id: UUID) {
+        metricsContinuations[id] = nil
+    }
+
+    private func broadcastMetrics() {
+        let current = metrics()
+        for continuation in metricsContinuations.values {
+            continuation.yield(current)
+        }
+    }
+
+    // MARK: Counters
 
     public func initTransaction() {
-        DispatchQueue.main.async {
-            self.cumulativeRequested = 0
-            self.cumulativeExecuted = 0
-        }
+        cumulativeRequested = 0
+        cumulativeExecuted = 0
+        broadcastMetrics()
     }
 
+    public func markRequested() {
+        cumulativeRequested += 1
+        broadcastMetrics()
+    }
+
+    public func markExecuted() {
+        cumulativeExecuted += 1
+        broadcastMetrics()
+    }
+
+    // MARK: Lifecycle
+
     public func start() {
-        #if DEBUG
-        print("[ApiSerialExecutor] starting exec loop")
-        #endif
-        self.enabled = true
-        self.executeNextRequest()
+        enabled = true
+        ensureWorker()
     }
 
     public func stop() {
-        #if DEBUG
-        print("[ApiSerialExecutor] stopping exec loop")
-        #endif
-        self.enabled = false
-    }
+        enabled = false
 
-    public func request(_ requestData: Data) async -> ApiResponse? {
-        DispatchQueue.main.async {
-            self.cumulativeRequested += 1
-        }
-        return await withCheckedContinuation { continuation in
-            executionContext.async {
-                let request = ApiRequest(
-                    requestData: requestData, /// JSON Data
-                    continuation: continuation
-                )
-                self.queue.push(request)
+        // Cancel the worker (wakes up sleeps and cancels URLSession async calls).
+        workerTask?.cancel()
+
+        // Resume any queued callers so nobody deadlocks.
+        let pending = queue
+        queue.removeAll()
+        if !pending.isEmpty {
+            for job in pending {
+                job.continuation.resume(returning: ApiResponse(responseString: nil, finalUrl: nil))
             }
+            cumulativeExecuted += pending.count
+            broadcastMetrics()
         }
+
+        // Wake the worker if it's waiting for work.
+        waitForWorkContinuation?.resume()
+        waitForWorkContinuation = nil
     }
 
-    // MARK: - JSON API
+    // MARK: Public API
 
-    public func requestJsonApi(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> ApiResponse? {
-        DispatchQueue.main.async {
-            self.cumulativeRequested += 1
-        }
-        return await withCheckedContinuation { continuation in
-            executionContext.async {
-                let request = ApiRequest(
-                    requestData: requestData, // JSON Data
-                    continuation: continuation,
-                    endpointURL: endpoint,
-                    httpMethod: method,
-                    headers: headers
-                )
-                self.queue.push(request)
-            }
-        }
-    }
-
-    func executeJsonApiRequest(
-        executionRequest: ApiRequest,
+    public func requestJsonApi(
+        _ requestData: Data,
         endpoint: URL,
         method: String,
-        headers: [String: String],
-        continuation: CheckedContinuation<ApiResponse, Never>,
-        goNextRequest: (() -> Void)? = nil
-    ) {
-        var request = URLRequest(url: endpoint)
-
-        // If method is GET and there's a body, do not attach httpBody
-        if method.uppercased() == "GET" && !executionRequest.requestData.isEmpty {
-            #if DEBUG
-            print("[ApiSerialExecutor] GET request with body is not allowed; ignoring body.")
-            #endif
-            request.httpMethod = method
-        } else {
-            request.httpMethod = method
-            // normal body-attachment steps
-            if let requestJson = try? JSONSerialization.jsonObject(with: executionRequest.requestData, options: []) as? [String: Any] {
-                if let requestBody = try? JSONSerialization.data(withJSONObject: requestJson, options: []) {
-                    request.httpBody = requestBody
-                }
-            }
-        }
-
-        request.addValue(DEFAULT_USER_AGENT, forHTTPHeaderField: "User-Agent")
-        for (key, value) in headers {
-            if !key.isEmpty && !value.isEmpty {
-                request.addValue(value, forHTTPHeaderField: key)
-            }
-        }
-
-        let defaultConfig = URLSessionConfiguration.default
-        defaultConfig.timeoutIntervalForRequest = 180
-
-        let session = URLSession(configuration: defaultConfig)
-
-        let task = session.dataTask(with: request) { data, response, error in
-            self.executionContext.async {
-                if let error = error {
-                    #if DEBUG
-                    print(error.localizedDescription)
-                    #endif
-                    continuation.resume(returning: ApiResponse(responseString: nil, finalUrl: nil))
-                } else if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let data = data {
-                    let responseString = String(data: data, encoding: .utf8)
-                    let finalUrl = httpResponse.url?.absoluteString
-                    continuation.resume(returning: ApiResponse(responseString: responseString, finalUrl: finalUrl))
-                } else {
-                    continuation.resume(returning: ApiResponse(responseString: nil, finalUrl: nil))
-                }
-            }
-
-            DispatchQueue.main.async {
-                self.cumulativeExecuted += 1
-            }
-            goNextRequest?()
-        }
-        task.resume()
-    }
-
-    func executeJsonApiImmediately(_ requestData: Data, endpoint: URL, method: String, headers: [String: String]) async -> ApiResponse? {
-        DispatchQueue.main.async {
-            self.cumulativeRequested += 1
-        }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<ApiResponse, Never>) in
-            executionContext.async {
-                let request = ApiRequest(
-                    requestData: requestData,
-                    continuation: continuation,
-                    endpointURL: endpoint,
-                    httpMethod: method,
-                    headers: headers
-                )
-                self.executeJsonApiRequest(
-                    executionRequest: request,
-                    endpoint: endpoint,
-                    method: method,
-                    headers: headers,
-                    continuation: continuation
-                )
-            }
-        }
-    }
-
-    // MARK: - Execution Loop
-
-    func executeNextRequest() {
+        headers: [String: String]
+    ) async -> ApiResponse? {
+        markRequested()
         if !enabled {
-            #if DEBUG
-            print("[ApiSerialExecutor] exec loop stopped by flag")
-            #endif
-            return
+            start()
         }
-        if let executionRequest = queue.pop() {
-            Task {
-                try await Task.sleep(nanoseconds: UInt64(0.5 * Double(NSEC_PER_SEC)))
-                guard let endpointURL = executionRequest.endpointURL,
-                      let httpMethod = executionRequest.httpMethod,
-                      let headers = executionRequest.headers else {
-                    self.executeNextRequest()
-                    return
+
+        return await withCheckedContinuation { continuation in
+            let job = Job(
+                requestData: requestData,
+                endpoint: endpoint,
+                method: method,
+                headers: headers,
+                continuation: continuation
+            )
+            queue.append(job)
+            waitForWorkContinuation?.resume()
+            waitForWorkContinuation = nil
+            ensureWorker()
+        }
+    }
+
+    public func executeJsonApiImmediately(
+        _ requestData: Data,
+        endpoint: URL,
+        method: String,
+        headers: [String: String]
+    ) async -> ApiResponse? {
+        markRequested()
+        let response = await executeRequest(
+            requestData: requestData,
+            endpoint: endpoint,
+            method: method,
+            headers: headers
+        )
+        markExecuted()
+        return response
+    }
+
+    // MARK: Worker
+
+    private func ensureWorker() {
+        guard workerTask == nil else { return }
+
+        workerTask = Task { [weak self] in
+            guard let self else { return }
+            await self.workerLoop()
+            await self.workerFinished()
+        }
+    }
+
+    private func workerFinished() {
+        workerTask = nil
+
+        // If we were restarted while the old worker was shutting down,
+        // spin up a new worker to drain any pending work.
+        if enabled, !queue.isEmpty {
+            ensureWorker()
+            waitForWorkContinuation?.resume()
+            waitForWorkContinuation = nil
+        }
+    }
+
+    private func workerLoop() async {
+        while enabled, !Task.isCancelled {
+            guard let job = await nextJob() else {
+                continue
+            }
+
+            do {
+                try await Task.sleep(for: delayBetweenRequests)
+            } catch {
+                // Cancellation: ensure the waiting caller doesn't hang.
+                job.continuation.resume(returning: ApiResponse(responseString: nil, finalUrl: nil))
+                markExecuted()
+                return
+            }
+
+            let response = await executeRequest(
+                requestData: job.requestData,
+                endpoint: job.endpoint,
+                method: job.method,
+                headers: job.headers
+            )
+            job.continuation.resume(returning: response)
+            markExecuted()
+        }
+    }
+
+    private func nextJob() async -> Job? {
+        while queue.isEmpty {
+            if Task.isCancelled || !enabled {
+                return nil
+            }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                waitForWorkContinuation = continuation
+            }
+            // After resuming, loop to re-check state.
+            waitForWorkContinuation = nil
+        }
+        return queue.removeFirst()
+    }
+
+    // MARK: HTTP
+
+    private func executeRequest(
+        requestData: Data,
+        endpoint: URL,
+        method: String,
+        headers: [String: String]
+    ) async -> ApiResponse? {
+        var request = URLRequest(url: endpoint)
+        let httpMethod = method.uppercased()
+        request.httpMethod = httpMethod
+
+        // RFC discourages GET bodies; ignore them for compatibility.
+        if httpMethod != "GET", !requestData.isEmpty {
+            request.httpBody = requestData
+        }
+
+        request.setValue(DEFAULT_USER_AGENT, forHTTPHeaderField: "User-Agent")
+
+        for (key, value) in headers where !key.isEmpty && !value.isEmpty {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        do {
+            let (data, response) = try await session.data(for: request)
+
+            let responseString = String(data: data, encoding: .utf8)
+
+            if let httpResponse = response as? HTTPURLResponse {
+                let finalUrl = httpResponse.url?.absoluteString
+                let headers: [String: String] = httpResponse.allHeaderFields.reduce(into: [:]) { acc, pair in
+                    let key = String(describing: pair.key)
+                    let value = String(describing: pair.value)
+                    acc[key] = value
                 }
-                self.executeJsonApiRequest(
-                    executionRequest: executionRequest,
-                    endpoint: endpointURL,
-                    method: httpMethod,
+
+                return ApiResponse(
+                    responseString: responseString,
+                    finalUrl: finalUrl,
+                    statusCode: httpResponse.statusCode,
                     headers: headers,
-                    continuation: executionRequest.continuation
-                ) {
-                    self.executeNextRequest()
-                }
+                    errorDescription: nil
+                )
+            } else {
+                return ApiResponse(
+                    responseString: responseString,
+                    finalUrl: nil,
+                    statusCode: nil,
+                    headers: [:],
+                    errorDescription: nil
+                )
             }
-        } else {
-            Task {
-                try await Task.sleep(nanoseconds: UInt64(2.0 * Double(NSEC_PER_SEC)))
-                self.executeNextRequest()
-            }
+        } catch {
+            #if DEBUG
+            print("[ApiSerialExecutor] Request failed: \(error)")
+            #endif
+            return ApiResponse(
+                responseString: nil,
+                finalUrl: nil,
+                statusCode: nil,
+                headers: [:],
+                errorDescription: error.localizedDescription
+            )
         }
     }
 }
 
-public class ApiRequester {
+// MARK: - Requester
+
+public struct ApiRequester: Sendable {
     let executor: ApiSerialExecutor
 
-    init(executor: ApiSerialExecutor){
+    public init(executor: ApiSerialExecutor) {
         self.executor = executor
     }
 
-    public struct Request: Codable {
-        var messages: [Message]
+    public func initTransaction() async {
+        await executor.initTransaction()
     }
 
-    public struct Message: Codable {
-        var key: String
-        var value: String
-    }
-
-    static func makeMessage(key: String, value: String) -> Message {
-        return Message(key: key, value: value)
-    }
-
-    public func initTransaction() {
-        self.executor.initTransaction()
-    }
-
-    public func processJsonApi(endpoint: URL, method: String, headers: [String: String], body: String, immediate: Bool = false) async -> ApiResponse? {
-        let requestData: Data = Data(body.utf8)
+    public func processJsonApi(
+        endpoint: URL,
+        method: String,
+        headers: [String: String],
+        body: String,
+        immediate: Bool = false
+    ) async -> ApiResponse? {
+        let requestData = Data(body.utf8)
         if immediate {
             #if DEBUG
             print("[ApiRequester] JSON API request will be immediately processed")
             #endif
-            return await executor.executeJsonApiImmediately(requestData, endpoint: endpoint, method: method, headers: headers)
+            return await executor.executeJsonApiImmediately(
+                requestData,
+                endpoint: endpoint,
+                method: method,
+                headers: headers
+            )
         } else {
-            if !executor.enabled {
-                executor.start()
-            }
             #if DEBUG
             print("[ApiRequester] JSON API request will be executed in serialized queue")
             #endif
-            return await executor.requestJsonApi(requestData, endpoint: endpoint, method: method, headers: headers)
+            return await executor.requestJsonApi(
+                requestData,
+                endpoint: endpoint,
+                method: method,
+                headers: headers
+            )
         }
     }
 }

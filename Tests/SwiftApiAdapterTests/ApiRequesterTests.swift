@@ -5,6 +5,11 @@ import SwiftyJSON
 
 class ApiRequesterTests: XCTestCase {
 
+    override func setUp() {
+        super.setUp()
+        JsonPlaceholderURLProtocol.register()
+    }
+
     func testProcessJsonApi() async throws {
         let executor = ApiSerialExecutor()
         let requester = ApiRequester(executor: executor)
