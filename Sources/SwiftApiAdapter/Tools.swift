@@ -1,5 +1,9 @@
 import Foundation
-import SwiftSoup
+
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+@preconcurrency import SwiftSoup
 
 class OpenGraphImageScraper {
     /// Asynchronously scrapes the Open Graph image URL from the given source URL.

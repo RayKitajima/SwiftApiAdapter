@@ -5,42 +5,57 @@ import SwiftyJSON
 
 class ApiConnectorManagerTests: XCTestCase {
 
-    func testGetConnector() {
-        let tag = "testTag"
-        let connector1 = ApiConnectorManager.shared.getConnector(for: tag)
+    func testGetConnector() async {
+        let tag = "testTag-\(UUID().uuidString)"
+
+        let connector1 = await ApiConnectorManager.shared.getConnector(for: tag)
         XCTAssertNotNil(connector1)
 
-        let connector2 = ApiConnectorManager.shared.getConnector(for: tag)
+        let connector2 = await ApiConnectorManager.shared.getConnector(for: tag)
         XCTAssertEqual(connector1, connector2)
+
+        // Cleanup
+        await ApiConnectorManager.shared.clearConnector(for: tag)
     }
 
-    func testClearConnector() {
-        let tag = "testTag"
-        let connector = ApiConnectorManager.shared.getConnector(for: tag)
+    func testClearConnector() async {
+        let tag = "testTag-\(UUID().uuidString)"
+        let connector = await ApiConnectorManager.shared.getConnector(for: tag)
         XCTAssertNotNil(connector)
 
-        ApiConnectorManager.shared.clearConnector(for: tag)
-        let newConnector = ApiConnectorManager.shared.getConnector(for: tag)
+        await ApiConnectorManager.shared.clearConnector(for: tag)
+        let newConnector = await ApiConnectorManager.shared.getConnector(for: tag)
         XCTAssertNotEqual(connector, newConnector)
+
+        // Cleanup
+        await ApiConnectorManager.shared.clearConnector(for: tag)
     }
 
-    func testClearAllConnectors() {
-        let tag1 = "testTag1"
-        let tag2 = "testTag2"
-        let connector1 = ApiConnectorManager.shared.getConnector(for: tag1)
-        let connector2 = ApiConnectorManager.shared.getConnector(for: tag2)
+    func testClearAllConnectors() async {
+        let tag1 = "testTag1-\(UUID().uuidString)"
+        let tag2 = "testTag2-\(UUID().uuidString)"
+        let connector1 = await ApiConnectorManager.shared.getConnector(for: tag1)
+        let connector2 = await ApiConnectorManager.shared.getConnector(for: tag2)
 
-        ApiConnectorManager.shared.clearAllConnectors()
+        await ApiConnectorManager.shared.clearAllConnectors()
 
-        let newConnector1 = ApiConnectorManager.shared.getConnector(for: tag1)
-        let newConnector2 = ApiConnectorManager.shared.getConnector(for: tag2)
+        let newConnector1 = await ApiConnectorManager.shared.getConnector(for: tag1)
+        let newConnector2 = await ApiConnectorManager.shared.getConnector(for: tag2)
 
         XCTAssertNotEqual(connector1, newConnector1)
         XCTAssertNotEqual(connector2, newConnector2)
+
+        // Cleanup (avoid leaking state across the test bundle)
+        await ApiConnectorManager.shared.clearAllConnectors()
     }
 }
 
 class ApiSerialExecutorTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        JsonPlaceholderURLProtocol.register()
+    }
 
     func testRequestJsonApi() async throws {
         let executor = ApiSerialExecutor()

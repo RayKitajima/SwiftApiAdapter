@@ -1,12 +1,37 @@
 import Foundation
 
-public struct ApiContentRack: Sendable {
+public struct ApiContentRack: Sendable, Equatable {
     public var id: UUID = UUID()
     public var arguments: [String: String] = [String: String]()
 
     public init(id: UUID = UUID(), arguments: [String: String] = [String: String]()) {
         self.id = id
         self.arguments = arguments
+    }
+}
+
+public struct ApiLoadDetailedResult: Sendable, Equatable {
+    public var rack: ApiContentRack?
+    public var responseString: String?
+    public var finalUrl: String?
+    public var statusCode: Int?
+    public var headers: [String: String]
+    public var errorDescription: String?
+
+    public init(
+        rack: ApiContentRack? = nil,
+        responseString: String? = nil,
+        finalUrl: String? = nil,
+        statusCode: Int? = nil,
+        headers: [String: String] = [:],
+        errorDescription: String? = nil
+    ) {
+        self.rack = rack
+        self.responseString = responseString
+        self.finalUrl = finalUrl
+        self.statusCode = statusCode
+        self.headers = headers
+        self.errorDescription = errorDescription
     }
 }
 
