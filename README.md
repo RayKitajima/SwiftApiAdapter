@@ -4,6 +4,11 @@ SwiftApiAdapter is a Swift Package that streamlines retrieving remote content (J
 
 This version targets **Swift 6** and uses **structured concurrency** throughout (actors + `async`/`await`) to provide a thread-safe, serial request pipeline.
 
+## Demo App
+
+For a macOS SwiftUI demonstration project built on this library, see
+[SwiftApiLab](https://github.com/RayKitajima/SwiftApiLab).
+
 ## Features
 
 - **Actor-based connector manager** (`ApiConnectorManager`) for safe, concurrent access to per-tag connectors.
