@@ -286,7 +286,7 @@ public class ApiContentLoader {
     /// A testing-oriented variant of `load(...)` that returns raw response information
     /// (status code / headers / body) even when the status code is non-200.
     ///
-    /// This is useful for tools such as StarlightApiLab, where users expect to inspect
+    /// This is useful for tools such as SwiftApiLab, where users expect to inspect
     /// error payloads and response metadata.
     public static func loadDetailed(contextId: UUID, apiContent: ApiContent) async throws -> ApiLoadDetailedResult {
         // Non-HTTP generators
